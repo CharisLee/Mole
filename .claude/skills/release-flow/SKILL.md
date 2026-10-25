@@ -1,6 +1,8 @@
 ---
 name: release-flow
 description: "Mole CLI release runbook for distribution channels, pre-flight checks, capital-V tags, artifacts, and curated-note handoff. Use when assessing or executing a Mole release. Not for release-note copy alone or ordinary code review."
+metadata:
+  internal: true
 ---
 
 # Mole CLI Release Flow

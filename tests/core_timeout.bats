@@ -84,6 +84,65 @@ setup() {
     [[ $exit_code -eq 124 ]]
 }
 
+@test "run_with_timeout: timeout backend kills a command that ignores TERM (#1787)" {
+    if ! command -v gtimeout >/dev/null 2>&1 && ! command -v timeout >/dev/null 2>&1; then
+        skip "gtimeout/timeout not available"
+    fi
+
+    start_time=$(date +%s)
+    set +e
+    /bin/bash -c "
+        set +e
+        source '$PROJECT_ROOT/lib/core/timeout.sh'
+        run_with_timeout 1 perl -e '\$SIG{TERM} = \"IGNORE\"; sleep 10'
+        exit \$?
+    "
+    exit_code=$?
+    set -e
+    duration=$(($(date +%s) - start_time))
+    [[ $exit_code -eq 124 ]] || return 1
+    [[ $duration -lt 7 ]]
+}
+
+@test "run_with_timeout: an early SIGKILL is not reported as a timeout" {
+    if ! command -v gtimeout >/dev/null 2>&1 && ! command -v timeout >/dev/null 2>&1; then
+        skip "gtimeout/timeout not available"
+    fi
+
+    set +e
+    /bin/bash -c "
+        set +e
+        source '$PROJECT_ROOT/lib/core/timeout.sh'
+        run_with_timeout 5 perl -e 'kill 9, \$\$'
+        exit \$?
+    "
+    exit_code=$?
+    set -e
+    [[ $exit_code -eq 137 ]]
+}
+
+@test "run_with_timeout: fractional deadlines preserve an early SIGKILL" {
+    if ! command -v gtimeout >/dev/null 2>&1 && ! command -v timeout >/dev/null 2>&1; then
+        skip "gtimeout/timeout not available"
+    fi
+
+    # Both a sub-second budget and a kill after its whole-second portion must
+    # retain the signal status rather than looking like timeout escalation.
+    run /bin/bash -c 'source "$1/lib/core/timeout.sh"; run_with_timeout 0.4 /bin/bash -c '\''kill -9 $$'\''' bash "$PROJECT_ROOT"
+    [[ $status -eq 137 ]] || return 1
+    run /bin/bash -c 'source "$1/lib/core/timeout.sh"; run_with_timeout 1.9 /bin/bash -c '\''sleep 1.1; kill -9 $$'\''' bash "$PROJECT_ROOT"
+    [[ $status -eq 137 ]]
+}
+
+@test "run_with_timeout: fractional deadlines still classify forced timeout escalation" {
+    if ! command -v gtimeout >/dev/null 2>&1 && ! command -v timeout >/dev/null 2>&1; then
+        skip "gtimeout/timeout not available"
+    fi
+
+    run /bin/bash -c 'source "$1/lib/core/timeout.sh"; run_with_timeout 0.4 /bin/bash -c '\''trap "" TERM; sleep 10'\''' bash "$PROJECT_ROOT"
+    [[ $status -eq 124 ]]
+}
+
 @test "run_with_timeout: kills long-running command" {
     start_time=$(date +%s)
     set +e

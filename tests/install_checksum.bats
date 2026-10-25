@@ -1533,6 +1533,40 @@ EOF
 	[ "$output" = "V1.60.0" ]
 }
 
+@test "installer never runs the system git stub without the Command Line Tools" {
+	local fake_bin="$HOME/fake-bin-git-stub"
+	mkdir -p "$fake_bin"
+	cat > "$fake_bin/git" <<'SCRIPT'
+#!/bin/bash
+echo ran >> "$HOME/git-ran"
+printf '%s\trefs/tags/V1.61.0\n' deadbeef
+SCRIPT
+	cat > "$fake_bin/xcode-select" <<'SCRIPT'
+#!/bin/bash
+exit "${XCODE_RC:-2}"
+SCRIPT
+	chmod +x "$fake_bin/git" "$fake_bin/xcode-select"
+
+	for xcode_rc in 2 0; do
+		rm -f "$HOME/git-ran"
+		run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PATH="$fake_bin:$PATH" XCODE_RC="$xcode_rc" FAKE_BIN="$fake_bin" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+mole_source_installer
+INSTALLER_SYSTEM_GIT_STUB="$FAKE_BIN/git"
+INSTALLER_XCODE_SELECT_BIN="$FAKE_BIN/xcode-select"
+printf 'tag=%s\n' "$(get_latest_release_tag_from_git || true)"
+EOF
+		[ "$status" -eq 0 ] || return 1
+		if [[ "$xcode_rc" == 2 ]]; then
+			[[ "$output" == "tag=" ]] || return 1
+			[[ ! -e "$HOME/git-ran" ]] || return 1
+		else
+			[[ "$output" == "tag=V1.61.0" ]] || return 1
+			[[ -e "$HOME/git-ran" ]] || return 1
+		fi
+	done
+}
+
 @test "get_latest_release_tag rejects non-macOS release tags" {
 	run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
 set -euo pipefail

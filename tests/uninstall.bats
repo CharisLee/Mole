@@ -6037,6 +6037,7 @@ uninstall_live_bundle_has_other_install() {
 }
 pgrep() { return 1; }
 get_brew_cask_name() { return 2; }
+brew() { return 0; }
 get_file_owner() { whoami; }
 get_path_size_kb() { echo "UNEXPECTED_SIZE"; }
 find_app_files() { echo "UNEXPECTED_DISCOVERY"; return 99; }
@@ -6068,6 +6069,58 @@ INNER
     [[ "$output" != *"UNEXPECTED_SIZE"* ]] || return 1
     [[ "$output" != *"UNEXPECTED_DISCOVERY"* ]] || return 1
     [[ "$output" != *"UNEXPECTED_TEARDOWN"* ]] || return 1
+    [[ "$output" != *"UNEXPECTED_DELETE"* ]]
+}
+
+@test "batch uninstall names the Homebrew error when brew itself cannot run" {
+    run env HOME="$HOME/batch-brew-failure" PROJECT_ROOT="$PROJECT_ROOT" \
+        /bin/bash --noprofile --norc <<'INNER'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/uninstall/batch.sh"
+
+app_path="$HOME/Applications/TimedOut.app"
+mkdir -p "$app_path"
+start_inline_spinner() { :; }
+stop_inline_spinner() { :; }
+_batch_refresh_selected_app_bundle_id() { printf 'com.example.TimedOut\n'; }
+official_uninstaller_vendor() { return 1; }
+uninstall_bundle_id_has_surviving_sibling() { return 1; }
+uninstall_live_bundle_has_other_install() {
+    _MOLE_UNINSTALL_LIVE_SIBLING_FINGERPRINT=""
+    _MOLE_UNINSTALL_LIVE_SIBLING_PATHS=()
+    return 1
+}
+pgrep() { return 1; }
+get_brew_cask_name() { return 2; }
+brew() {
+    printf 'Error: You have not agreed to the Xcode license agreements.\n' >&2
+    return 1
+}
+get_file_owner() { whoami; }
+get_path_size_kb() { echo "UNEXPECTED_SIZE"; }
+find_app_files() { echo "UNEXPECTED_DISCOVERY"; return 99; }
+stop_launch_services() { echo "UNEXPECTED_TEARDOWN"; }
+unregister_app_bundle() { echo "UNEXPECTED_TEARDOWN"; }
+remove_login_item() { echo "UNEXPECTED_TEARDOWN"; }
+force_kill_app() { echo "UNEXPECTED_TEARDOWN"; }
+mole_delete() { echo "UNEXPECTED_DELETE"; }
+
+selected_apps=("0|$app_path|TimedOut|com.example.TimedOut|0|Never")
+files_cleaned=0
+total_items=0
+total_size_cleaned=0
+rc=0
+MOLE_TEST_MODE=1 batch_uninstall_applications || rc=$?
+printf 'RC=%s\n' "$rc"
+[[ $rc -eq 1 ]]
+INNER
+
+    [ "$status" -eq 0 ] || return 1
+    [[ "$output" == *"RC=1"* ]] || return 1
+    [[ "$output" == *"nothing was removed"* ]] || return 1
+    [[ "$output" == *"Homebrew itself failed: You have not agreed to the Xcode license agreements."* ]] || return 1
+    [[ "$output" != *"matches a Homebrew cask brew cannot read"* ]] || return 1
     [[ "$output" != *"UNEXPECTED_DELETE"* ]]
 }
 

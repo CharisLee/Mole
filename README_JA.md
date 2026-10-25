@@ -43,13 +43,19 @@ brew install mole
 curl -fsSL https://raw.githubusercontent.com/tw93/mole/main/install.sh | bash
 ```
 
-**Windowsでインストール**（[Windows版CLI](https://github.com/tw93/Mole/tree/windows)）
+**AI エージェントでインストール**
 
-```powershell
-iwr -useb https://raw.githubusercontent.com/tw93/Mole/windows/quick-install.ps1 | iex
+エージェントにこう伝えるだけです：
+
+> Install Mole for me by reading https://raw.githubusercontent.com/tw93/Mole/main/llms.txt
+
+スキルを自分で入れることもできます。入れると Claude Code、Codex、Cursor などのエージェントは削除の前に必ず `--dry-run` で一覧を見せ、アプリのアンインストールと管理者権限が必要な手順はあなたに任せます。更新は `npx skills update -g -y` です。
+
+```bash
+npx skills add tw93/Mole -a claude-code codex cursor -g -y
 ```
 
-Moleの配布元はHomebrew、このGitHubリポジトリ、Mac版とWindows版の[mole.fit](https://mole.fit/)だけです。「Moleベース」をうたう別のアプリや、エンコードされたコマンドをターミナルに貼り付けるよう求めるサイトはMoleとは無関係です。
+ホストのプラグインとして入れる場合は、Claude Code で `/plugin marketplace add tw93/Mole` のあと `/plugin install mole@mole`、Codex で `codex plugin marketplace add tw93/Mole` のあと `codex plugin add mole@mole` を実行します。
 
 **主要コマンド**
 
@@ -128,6 +134,14 @@ nix profile remove mole
 宣言的に構成する場合は、`github:tw93/mole/main` をflake inputとして追加し、`packages.${system}.mole` パッケージを使用してください。更新と削除はNixで行います。`mo update` と `mo remove` はNixで管理されたインストールを変更しません。
 
 </details>
+
+**Windowsでインストール**（[Windows版CLI](https://github.com/tw93/Mole/tree/windows)）
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/tw93/Mole/windows/quick-install.ps1 | iex
+```
+
+Moleの配布元はHomebrew、このリポジトリ、[mole.fit](https://mole.fit/)だけです。`molemac.com`、`moleapp.net`、`molefit.com` はMoleではなく、`mole.bluecatbot.com` のWindowsアプリは同じ名前の別のコミュニティプロジェクトです。
 
 ## 安全性
 
@@ -306,6 +320,7 @@ Proxy   HTTP · 192.168.1.100             Chrome     ▮▮▮▯▯  28.3%
 - `mo status | jq '.health_score'`：パイプ接続時に自動でJSONモードへ切り替え
 - `mo status --watch --interval 2s`：NDJSON形式でリアルタイムストリーミング
 - `mo history --json`：クリーンアップ履歴をJSONで出力。各セッションには `run_id`（不透明な文字列で、識別情報が記録されていない場合は空）と `attribution` が含まれ、識別できた実行は `run`、旧来のコマンド単位のグループ化は `command`、旧形式のマーカーでは中断と実行の重なりを区別できない場合は `ambiguous` になります。記録されたアクションは引き続き参照できますが、`ambiguous` の件数を個々の実行に正しく割り当てることはできません。`ended_at` が空の場合は終了マーカーが記録されていません。
+- `mo uninstall --list`：インストール済みアプリを `name`、`bundle_id`、`source`、`uninstall_name`、`path`、`size` を含むJSONで出力
 
 ```text
 $ mo analyze --json ~/Documents
@@ -468,11 +483,9 @@ PAPAYA 電腦教室 による [Moleチュートリアル動画](https://www.yout
 - Moleが役に立った場合は、GitHubのStarや [Xでのシェア](https://twitter.com/intent/tweet?url=https://github.com/tw93/Mole&text=Mole%20-%20Deep%20clean%20and%20optimize%20your%20Mac.)、Issue・PRでのフィードバックをお願いします
 - 我が家には「湯圓（タンユエン）」と「コーラ」という2匹の猫がいて、Moleが役に立ったら彼女たちに <a href="https://cats.tw93.fun?name=Mole" target="_blank">缶詰 🥩</a> をごちそうしてもらえるとうれしいです
 
-<details>
-<summary>支援してくださった方々 🐱</summary>
-<br/>
-<a href="https://cats.tw93.fun?name=Mole"><img src="https://cdn.jsdelivr.net/gh/tw93/sponsors@main/assets/sponsors.svg" alt="スポンサー" width="1000" loading="lazy" /></a>
-</details>
+支援してくださった方々 🐱
+
+<a href="https://cats.tw93.fun?name=Mole"><img src="https://raw.githubusercontent.com/tw93/sponsors/main/assets/sponsors.svg" alt="スポンサー" width="1000" loading="lazy" /></a>
 
 ## ライセンス
 

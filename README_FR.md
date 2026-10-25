@@ -43,13 +43,19 @@ brew install mole
 curl -fsSL https://raw.githubusercontent.com/tw93/mole/main/install.sh | bash
 ```
 
-**Sous Windows** ([CLI Windows](https://github.com/tw93/Mole/tree/windows))
+**Avec un agent IA**
 
-```powershell
-iwr -useb https://raw.githubusercontent.com/tw93/Mole/windows/quick-install.ps1 | iex
+Dites à votre agent :
+
+> Install Mole for me by reading https://raw.githubusercontent.com/tw93/Mole/main/llms.txt
+
+Ou installez le skill vous-même. Avec lui, Claude Code, Codex, Cursor et les autres agents vous montrent chaque nettoyage avec `--dry-run` avant de supprimer quoi que ce soit, et vous laissent les désinstallations d'apps et les étapes administrateur. Mise à jour avec `npx skills update -g -y`.
+
+```bash
+npx skills add tw93/Mole -a claude-code codex cursor -g -y
 ```
 
-Mole est distribué uniquement via Homebrew, ce dépôt GitHub et [mole.fit](https://mole.fit/) pour les apps Mac et Windows. Les sites qui proposent une app « basée sur Mole » ou vous demandent de coller une commande encodée dans le Terminal n'ont aucun lien avec Mole.
+En plugin de l'hôte : dans Claude Code `/plugin marketplace add tw93/Mole` puis `/plugin install mole@mole`, dans Codex `codex plugin marketplace add tw93/Mole` puis `codex plugin add mole@mole`.
 
 **Commandes principales**
 
@@ -128,6 +134,14 @@ nix profile remove mole
 Pour une installation déclarative, ajoutez `github:tw93/mole/main` comme entrée flake et utilisez le paquet `packages.${system}.mole`. Mettez à jour ou supprimez Mole via Nix ; `mo update` et `mo remove` ne modifient pas les installations gérées par Nix.
 
 </details>
+
+**Sous Windows** ([CLI Windows](https://github.com/tw93/Mole/tree/windows))
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/tw93/Mole/windows/quick-install.ps1 | iex
+```
+
+Mole est distribué uniquement via Homebrew, ce dépôt et [mole.fit](https://mole.fit/). `molemac.com`, `moleapp.net` et `molefit.com` ne sont pas Mole, et l'app Windows de `mole.bluecatbot.com` est un projet communautaire distinct.
 
 ## Sécurité et fiabilité
 
@@ -306,6 +320,7 @@ Le score de santé combine le CPU, la mémoire, l'espace disque, l'état SMART, 
 - `mo status | jq '.health_score'` : passe automatiquement en mode JSON lorsqu'il est utilisé dans un pipeline
 - `mo status --watch --interval 2s` : transmet un flux NDJSON (JSON délimité par des retours à la ligne)
 - `mo history --json` : affiche l'historique des nettoyages au format JSON. Les sessions incluent `run_id` (une chaîne opaque, vide si aucune identité n'a été enregistrée) et `attribution` : `run` pour les exécutions identifiées, `command` pour l'ancien regroupement par commande, ou `ambiguous` quand les anciens marqueurs ne permettent pas de distinguer une interruption d'exécutions qui se chevauchent. Les actions enregistrées restent disponibles ; les décomptes ambigus ne peuvent pas être attribués de façon fiable à une exécution précise. Un `ended_at` vide signifie qu'aucun marqueur de fin n'a été enregistré.
+- `mo uninstall --list` : renvoie les apps installées au format JSON avec `name`, `bundle_id`, `source`, `uninstall_name`, `path` et `size`
 
 ```text
 $ mo analyze --json ~/Documents
@@ -468,11 +483,9 @@ Vous préférez un tutoriel vidéo ? Regardez la [présentation de Mole](https:/
 - Si Mole vous rend service, laissez-lui une étoile sur GitHub, [partagez-le sur X](https://twitter.com/intent/tweet?url=https://github.com/tw93/Mole&text=Mole%20-%20Deep%20clean%20and%20optimize%20your%20Mac.) ou proposez une issue / PR
 - J'ai deux chattes, TangYuan et Coke, et si Mole vous simplifie la vie, n'hésitez pas à leur offrir <a href="https://cats.tw93.fun?name=Mole" target="_blank">une boîte de pâtée 🥩</a>
 
-<details>
-<summary>Ceux qui ont déjà régalé les chats 🐱</summary>
-<br/>
-<a href="https://cats.tw93.fun?name=Mole"><img src="https://cdn.jsdelivr.net/gh/tw93/sponsors@main/assets/sponsors.svg" alt="Donateurs de Mole" width="1000" loading="lazy" /></a>
-</details>
+Ceux qui ont déjà régalé les chats 🐱
+
+<a href="https://cats.tw93.fun?name=Mole"><img src="https://raw.githubusercontent.com/tw93/sponsors/main/assets/sponsors.svg" alt="Donateurs de Mole" width="1000" loading="lazy" /></a>
 
 ## Licence
 

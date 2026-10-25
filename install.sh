@@ -781,7 +781,7 @@ resolve_source_dir() {
     stop_line_spinner
 
     start_line_spinner "Cloning Mole source..."
-    if command -v git > /dev/null 2>&1; then
+    if installer_git_runs_quietly; then
         local clone_succeeded=false
         if [[ -n "$source_commit" ]]; then
             if git init -q "$tmp/mole" > /dev/null 2>&1 &&
@@ -847,13 +847,30 @@ get_latest_release_tag() {
     printf '%s\n' "$tag"
 }
 
+# /usr/bin/git is a stub until the Command Line Tools are installed, and
+# running it opens their installer. Plain assignments so a test can point both
+# at fixtures after sourcing.
+INSTALLER_SYSTEM_GIT_STUB="/usr/bin/git"
+INSTALLER_XCODE_SELECT_BIN="/usr/bin/xcode-select"
+
+# Succeeds when git can run without popping up the Command Line Tools installer.
+installer_git_runs_quietly() {
+    local git_bin
+    git_bin=$(command -v git 2> /dev/null) || return 1
+    [[ "$git_bin" == "$INSTALLER_SYSTEM_GIT_STUB" ]] || return 0
+    "$INSTALLER_XCODE_SELECT_BIN" -p > /dev/null 2>&1
+}
+
 get_latest_release_tag_from_git() {
-    if ! command -v git > /dev/null 2>&1; then
+    if ! installer_git_runs_quietly; then
         return 1
     fi
     # Only plain macOS tags: the Windows CLI publishes V<x.y.z>-windows in the
     # same repository, and sort -V ranks V1.60.0-windows above V1.60.0.
-    git ls-remote --tags --refs https://github.com/tw93/mole.git 2> /dev/null |
+    # install.sh has no timeout helper, so a stalled transfer is cut off by
+    # git's own low-speed limit instead.
+    git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=10 \
+        ls-remote --tags --refs https://github.com/tw93/mole.git 2> /dev/null |
         awk -F/ '{print $NF}' |
         grep -E '^V[0-9]+\.[0-9]+\.[0-9]+$' |
         sort -V |

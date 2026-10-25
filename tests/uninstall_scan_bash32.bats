@@ -864,6 +864,41 @@ EOF
 	[[ "$output" != *"|$backup_app|Dupe|com.example.Dupe|"* ]]
 }
 
+@test "scan_applications folds hidden backup bundles into the visible app (#1791)" {
+	src="$HOME/uninstall_source.sh"
+	sourceable_uninstall_sh "$src"
+
+	apps_root="$HOME/Applications"
+	live_app="$apps_root/Aegis.app"
+	backup_one="$apps_root/.Aegis-backup-1.app"
+	backup_two="$apps_root/.Aegis-backup-2.app"
+	lone_hidden="$apps_root/.Solo.app"
+	create_test_app_bundle "$backup_one" "com.example.Aegis" "Aegis"
+	create_test_app_bundle "$live_app" "com.example.Aegis" "Aegis"
+	create_test_app_bundle "$backup_two" "com.example.Aegis" "Aegis"
+	create_test_app_bundle "$lone_hidden" "com.example.Solo" "Solo"
+
+	run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" \
+		MOLE_TEST_NO_AUTH=1 APPS_ROOT="$apps_root" SRC_PATH="$src" \
+		/bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+
+# shellcheck source=/dev/null
+source "$SRC_PATH"
+
+uninstall_print_app_search_dirs() { printf '%s\n' "$APPS_ROOT"; }
+
+apps_file=$(scan_applications)
+cat "$apps_file"
+EOF
+
+	[ "$status" -eq 0 ]
+	[[ "$output" == *"|$live_app|Aegis|com.example.Aegis|"* ]] || return 1
+	[[ "$output" != *"|$backup_one|"* ]] || return 1
+	[[ "$output" != *"|$backup_two|"* ]] || return 1
+	[[ "$output" == *"|$lone_hidden|Solo|com.example.Solo|"* ]]
+}
+
 @test "scan_applications keeps distinct installs sharing a bundle id (Xcode vs Xcode-beta)" {
 	src="$HOME/uninstall_source.sh"
 	sourceable_uninstall_sh "$src"

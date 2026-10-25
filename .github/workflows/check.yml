@@ -109,5 +109,10 @@ jobs:
           go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
+      - name: Fetch the Windows CLI for the skill audit
+        run: git fetch --no-tags --depth=1 origin windows:refs/remotes/origin/windows
+
       - name: Run check script
+        env:
+          MOLE_SKILL_AUDIT_REQUIRE_WINDOWS: "1"
         run: ./scripts/check.sh --no-format

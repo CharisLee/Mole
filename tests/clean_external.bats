@@ -153,6 +153,30 @@ EOF
     done
 }
 
+@test "external cleanup sizes a temporary root with an unlistable child instead of cancelling" {
+    local volume="$HOME/External"
+    mkdir -p "$volume/.TemporaryItems/locked"
+    printf 'data\n' > "$volume/.TemporaryItems/readable"
+    chmod 000 "$volume/.TemporaryItems/locked"
+    run env VOLUME="$volume" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc << 'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/bin/clean.sh"
+DRY_RUN=true
+start_section_spinner() { :; }
+stop_section_spinner() { :; }
+should_protect_path() { return 1; }
+is_path_whitelisted() { return 1; }
+record_dry_run_cleanup_target() { printf '%s %s\n' "$1" "$2" >> "$HOME/sinks"; }
+clean_external_volume_target "$VOLUME"
+EOF
+    chmod 700 "$volume/.TemporaryItems/locked"
+    [ "$status" -eq 0 ] || {
+        echo "$output"
+        return 1
+    }
+    grep -Eq "^$volume/\.TemporaryItems [1-9][0-9]*\$" "$HOME/sinks" || return 1
+}
+
 @test "external scan failures name the first cause and keep full diagnostics in logs" {
     for scan in appledouble finder; do
         for dry_run in true false; do

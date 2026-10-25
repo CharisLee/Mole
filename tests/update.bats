@@ -2147,6 +2147,41 @@ SCRIPT
 	[ "$status" -eq 0 ]
 }
 
+@test "git fallbacks never run the system git stub without the Command Line Tools" {
+	local fake_bin="$TEST_ROOT/fake-bin-git-stub"
+	mkdir -p "$fake_bin"
+	cat > "$fake_bin/git" <<'SCRIPT'
+#!/bin/bash
+echo ran >> "$TEST_ROOT/git-ran"
+printf '%s\trefs/tags/V1.61.0\n' deadbeef
+SCRIPT
+	cat > "$fake_bin/xcode-select" <<'SCRIPT'
+#!/bin/bash
+exit "${XCODE_RC:-2}"
+SCRIPT
+	chmod +x "$fake_bin/git" "$fake_bin/xcode-select"
+
+	for xcode_rc in 2 0; do
+		rm -f "$TEST_ROOT/git-ran"
+		run env PATH="$fake_bin:$PATH" XCODE_RC="$xcode_rc" FAKE_BIN="$fake_bin" TEST_ROOT="$TEST_ROOT" /bin/bash <<'SCRIPT'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/manage/update.sh"
+MOLE_SYSTEM_GIT_STUB="$FAKE_BIN/git"
+MOLE_XCODE_SELECT_BIN="$FAKE_BIN/xcode-select"
+printf 'version=%s\n' "$(get_latest_version_from_git)"
+SCRIPT
+		[ "$status" -eq 0 ] || return 1
+		if [[ "$xcode_rc" == 2 ]]; then
+			[[ "$output" == "version=" ]] || return 1
+			[[ ! -e "$TEST_ROOT/git-ran" ]] || return 1
+		else
+			[[ "$output" == "version=1.61.0" ]] || return 1
+			[[ -e "$TEST_ROOT/git-ran" ]] || return 1
+		fi
+	done
+}
+
 @test "update check stays silent when the cache cannot be written or read" {
  [ "$(id -u)" -ne 0 ] || skip "root ignores directory and file modes"
  run /bin/bash <<'SCRIPT'

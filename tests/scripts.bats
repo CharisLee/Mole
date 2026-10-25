@@ -496,3 +496,105 @@ SCRIPT
         fi
     done
 }
+
+@test "skill command audit rejects commands and flags the CLI does not have" {
+    local audit="$PROJECT_ROOT/scripts/audit_skill_commands.py"
+    local skill="$BATS_TEST_TMPDIR/skill"
+    mkdir -p "$skill/references"
+    cat > "$skill/SKILL.md" <<'EOF'
+Run `mo clean --dry-run`, then `mo status --json`.
+EOF
+    cat > "$skill/references/macos.md" <<'EOF'
+```bash
+brew install mole
+mo history --json --limit 5   # recent runs
+mo analyze --json ~/Library
+```
+EOF
+    printf 'Windows notes without commands.\n' > "$skill/references/windows.md"
+
+    run python3 "$audit" --skill-dir "$skill" --windows-ref refs/heads/mole-audit-missing-ref
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"Windows side skipped"* ]] || return 1
+    [[ "$output" == *"skill-commands-audit-ok (4 command checks)"* ]] || { echo "$output"; return 1; }
+
+    run python3 "$audit" --skill-dir "$skill" --windows-ref refs/heads/mole-audit-missing-ref --require-windows
+    [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+
+    cat >> "$skill/references/macos.md" <<'EOF'
+Then `mo clean --yes` or `mo frobnicate`.
+EOF
+    run python3 "$audit" --skill-dir "$skill" --windows-ref refs/heads/mole-audit-missing-ref
+    [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"macos.md:6: \`mo clean --yes\` is not in the macOS source"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"macos.md:6: \`mo frobnicate\` is not a macOS command"* ]] || { echo "$output"; return 1; }
+}
+
+@test "skill command audit rejects a Codex plugin copy that drifted from the skill" {
+    local audit="$PROJECT_ROOT/scripts/audit_skill_commands.py"
+    local skill="$BATS_TEST_TMPDIR/skill"
+    local copy="$BATS_TEST_TMPDIR/copy"
+    mkdir -p "$skill/references"
+    cat > "$skill/SKILL.md" <<'EOF'
+Run `mo clean --dry-run`.
+EOF
+    : > "$skill/references/macos.md"
+    : > "$skill/references/windows.md"
+    cp -R "$skill" "$copy"
+
+    run python3 "$audit" --skill-dir "$skill" --plugin-copy "$copy" --windows-ref refs/heads/mole-audit-missing-ref
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+
+    printf 'stale\n' > "$copy/references/macos.md"
+    run python3 "$audit" --skill-dir "$skill" --plugin-copy "$copy" --windows-ref refs/heads/mole-audit-missing-ref
+    [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"$copy/references/macos.md: differs from $skill"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"fix with: rm -rf $copy && cp -R $skill $copy"* ]] || { echo "$output"; return 1; }
+}
+
+@test "CI checks the published skill against both CLIs" {
+    run grep -F 'audit_skill_commands.py' "$PROJECT_ROOT/scripts/check.sh"
+    [ "$status" -eq 0 ]
+    run grep -F 'git fetch --no-tags --depth=1 origin windows' "$PROJECT_ROOT/.github/workflows/check.yml"
+    [ "$status" -eq 0 ]
+}
+
+@test "test runner isolates module-loading temp state before sourcing core" {
+    local bootstrap="$HOME/runner-bootstrap.sh"
+    # Execute the complete real bootstrap; redirect only its repository path to
+    # a fixture so its orphan-test sweep cannot touch another test's HOME.
+    python3 - "$PROJECT_ROOT/scripts/test.sh" "$bootstrap" <<'PYTHON'
+from pathlib import Path
+import sys
+source = Path(sys.argv[1]).read_text()
+end = '\necho "==============================="\necho "Mole Test Runner"'
+anchor = 'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"'
+assert source.count(end) == source.count(anchor) == 1
+prefix = source.split(end, 1)[0]
+prefix = prefix.replace(anchor, 'SCRIPT_DIR="$FIXTURE_REPO/scripts"')
+Path(sys.argv[2]).write_text(prefix)
+PYTHON
+    run env BOOTSTRAP="$bootstrap" SOURCE_REPO="$PROJECT_ROOT" \
+        FIXTURE_REPO="$BATS_TEST_TMPDIR/repo" HOME="$BATS_TEST_TMPDIR/runner-home" \
+        TMPDIR="$BATS_TEST_TMPDIR/ambient-link" MOLE_RESOLVED_TMPDIR="$BATS_TEST_TMPDIR/ambient" \
+        MOLE_TEMP_REGISTRY_FILE="$BATS_TEST_TMPDIR/ambient/mole.registry.parent" /bin/bash <<'SCRIPT'
+set -euo pipefail
+mkdir -p "$FIXTURE_REPO/scripts" "$FIXTURE_REPO/tests" "$HOME" "${TMPDIR%-link}"
+ln -s "${TMPDIR%-link}" "$TMPDIR"
+ln -s "$SOURCE_REPO/lib" "$FIXTURE_REPO/lib"
+ambient="$TMPDIR"
+printf keep > "$MOLE_TEMP_REGISTRY_FILE"
+source "$BOOTSTRAP"
+# This is the runner's real module-loading consumer, outside the Bats helper.
+source "$PROJECT_ROOT/lib/core/common.sh"
+test_file=$(create_temp_file)
+# Shell and canonicalizing consumers must see the same root (including /var).
+[[ "$TMPDIR" == "$(cd -P "$TMPDIR" && pwd -P)" ]] || exit 1
+[[ "$TMPDIR" == "$TEST_SYSTEM_STUB_DIR/tmp" ]] || exit 1
+[[ "$test_file" == "$TMPDIR/"* && -f "$test_file" ]] || exit 1
+[[ "$(cat "$ambient/mole.registry.parent")" == keep ]] || exit 1
+printf 'PASS\n'
+SCRIPT
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *PASS* ]]
+}

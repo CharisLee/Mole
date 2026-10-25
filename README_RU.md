@@ -43,13 +43,19 @@ brew install mole
 curl -fsSL https://raw.githubusercontent.com/tw93/mole/main/install.sh | bash
 ```
 
-**В Windows** ([Windows CLI](https://github.com/tw93/Mole/tree/windows))
+**Через ИИ-агента**
 
-```powershell
-iwr -useb https://raw.githubusercontent.com/tw93/Mole/windows/quick-install.ps1 | iex
+Скажите своему агенту:
+
+> Install Mole for me by reading https://raw.githubusercontent.com/tw93/Mole/main/llms.txt
+
+Или установите скилл сами. С ним Claude Code, Codex, Cursor и другие агенты перед любым удалением показывают список через `--dry-run`, а удаление приложений и шаги с правами администратора оставляют вам. Обновление: `npx skills update -g -y`.
+
+```bash
+npx skills add tw93/Mole -a claude-code codex cursor -g -y
 ```
 
-Mole распространяется только через Homebrew, этот репозиторий на GitHub и [mole.fit](https://mole.fit/) (приложения под Mac и Windows). Сайты, которые предлагают приложение «на основе Mole» или просят вставить в Терминал закодированную команду, не имеют к Mole никакого отношения.
+Как плагин хоста: в Claude Code `/plugin marketplace add tw93/Mole`, затем `/plugin install mole@mole`, в Codex `codex plugin marketplace add tw93/Mole`, затем `codex plugin add mole@mole`.
 
 **Запуск**
 
@@ -128,6 +134,14 @@ nix profile remove mole
 Для декларативной установки добавьте `github:tw93/mole/main` как flake input и используйте пакет `packages.${system}.mole`. Обновляйте и удаляйте Mole через Nix: `mo update` и `mo remove` не меняют установки, которыми управляет Nix.
 
 </details>
+
+**В Windows** ([Windows CLI](https://github.com/tw93/Mole/tree/windows))
+
+```powershell
+iwr -useb https://raw.githubusercontent.com/tw93/Mole/windows/quick-install.ps1 | iex
+```
+
+Mole распространяется только через Homebrew, этот репозиторий и [mole.fit](https://mole.fit/). `molemac.com`, `moleapp.net` и `molefit.com` не относятся к Mole, а приложение для Windows на `mole.bluecatbot.com` является отдельным проектом сообщества.
 
 ## Безопасность
 
@@ -306,6 +320,7 @@ Proxy   HTTP · 192.168.1.100             Chrome     ▮▮▮▯▯  28.3%
 - `mo status | jq '.health_score'` автоматически переключается на JSON, когда вывод передаётся по конвейеру
 - `mo status --watch --interval 2s` транслирует JSON, разделённый переводами строк (NDJSON), из уже прогретого сборщика данных
 - `mo history --json` возвращает историю очистки в формате JSON. Сессии содержат `run_id` (непрозрачная строка, пустая, если идентификатор не записывался) и `attribution`: `run` для опознанных запусков, `command` для устаревшей группировки по командам или `ambiguous`, когда по старым меткам невозможно отличить прерывание от перекрывающихся запусков. Записанные действия остаются доступными, но неоднозначные счётчики нельзя надёжно отнести к отдельным запускам. Пустое `ended_at` означает, что метка завершения не записана
+- `mo uninstall --list` возвращает установленные приложения в формате JSON с полями `name`, `bundle_id`, `source`, `uninstall_name`, `path` и `size`
 
 ```text
 $ mo analyze --json ~/Documents
@@ -468,11 +483,9 @@ curl -fsSL https://raw.githubusercontent.com/tw93/Mole/main/scripts/setup-quick-
 - Если Mole вам помог, поставьте звезду, [расскажите о нём](https://twitter.com/intent/tweet?url=https://github.com/tw93/Mole&text=Mole%20-%20Deep%20clean%20and%20optimize%20your%20Mac.) или откройте issue либо PR
 - У меня двое котов, TangYuan и Coke; если Mole хоть немного облегчил вам жизнь, можете угостить их <a href="https://cats.tw93.fun?name=Mole" target="_blank">консервами 🥩</a>
 
-<details>
-<summary>Эти замечательные люди уже угостили 🐱</summary>
-<br/>
-<a href="https://cats.tw93.fun?name=Mole"><img src="https://cdn.jsdelivr.net/gh/tw93/sponsors@main/assets/sponsors.svg" alt="Спонсоры Mole" width="1000" loading="lazy" /></a>
-</details>
+Эти замечательные люди уже угостили 🐱
+
+<a href="https://cats.tw93.fun?name=Mole"><img src="https://raw.githubusercontent.com/tw93/sponsors/main/assets/sponsors.svg" alt="Спонсоры Mole" width="1000" loading="lazy" /></a>
 
 ## Лицензия
 

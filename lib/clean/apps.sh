@@ -1296,6 +1296,11 @@ clean_orphaned_system_services() {
                 if mole_rc_timeout_or_signal "$helper_id_rc"; then
                     return "$helper_id_rc"
                 fi
+                # Only a reverse-DNS helper id can be asked about its parent
+                # app, the rule the bare-helper pass uses. A plain file name
+                # (VendorCloudPrintUpdater) is no bundle id, so it always read
+                # as "parent app gone" and a live KeepAlive daemon was offered.
+                [[ "$helper_bundle_id" =~ ^(com|org|net|io)\. ]] || return 1
                 local helper_resolver_rc=0
                 bundle_has_installed_app "$helper_bundle_id" \
                     "$service_cleanup_deadline" || helper_resolver_rc=$?
