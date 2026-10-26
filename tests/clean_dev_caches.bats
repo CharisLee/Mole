@@ -4706,6 +4706,72 @@ EOF
     [[ "$output" == *SIGNALS_PRESERVED* && "$output" != *MUTATED* ]] || return 1
 }
 
+@test "owner cache physical resolution preserves interruption and ordinary failures" {
+    mkdir -p "$HOME/resolution-cache" "$HOME/resolution-bin"
+    cat > "$HOME/resolution-bin/uv" <<'SCRIPT'
+#!/bin/bash
+case "$*" in
+    --version) exit 0 ;;
+    'cache dir') printf '%s\n' "$HOME/resolution-cache" ;;
+    'cache prune') printf 'OWNER\n' >> "$TRACE" ;;
+    *) exit 97 ;;
+esac
+SCRIPT
+    cat > "$HOME/resolution-bin/path-probe" <<'SCRIPT'
+#!/bin/bash
+printf 'RESOLVE\n' >> "$TRACE"
+case "$PROBE_STATE" in
+    signal) kill -TERM "$$" ;;
+    failure) exit 1 ;;
+    success) exit 0 ;;
+esac
+SCRIPT
+    chmod +x "$HOME/resolution-bin/uv" "$HOME/resolution-bin/path-probe"
+    run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" PATH="$HOME/resolution-bin:$PATH" \
+        TRACE="$HOME/resolution.trace" MOLE_TEST_NO_AUTH=1 /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/clean/dev.sh"
+DRY_RUN=false
+WHITELIST_PATTERNS=()
+cd() {
+    builtin cd "$@" || return $?
+    if [[ "$PWD" == "$HOME/resolution-cache" && "$PROBE_AT" == cd ]]; then
+        "$HOME/resolution-bin/path-probe" || return $?
+    fi
+}
+pwd() {
+    if [[ "$PWD" == "$HOME/resolution-cache" && "$PROBE_AT" == pwd ]]; then
+        "$HOME/resolution-bin/path-probe" || return $?
+    fi
+    builtin pwd "$@"
+}
+for PROBE_AT in cd pwd; do
+    for PROBE_STATE in signal failure success; do
+        export PROBE_STATE
+        : > "$TRACE"
+        rc=0
+        clean_uv_cache || rc=$?
+        grep -qx RESOLVE "$TRACE" || exit 1
+        if [[ "$PROBE_STATE" == signal ]]; then
+            [[ "$rc" == 143 ]] || { echo "LOST_SIGNAL:$PROBE_AT:$rc"; exit 1; }
+        else
+            [[ "$rc" == 0 ]] || exit 1
+        fi
+        if [[ "$PROBE_STATE" == success ]]; then
+            grep -qx OWNER "$TRACE" || exit 1
+        elif grep -qx OWNER "$TRACE"; then
+            echo "UNEXPECTED_OWNER:$PROBE_AT:$PROBE_STATE"
+            exit 1
+        fi
+    done
+done
+echo RESOLUTION_GUARD_OK
+EOF
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *RESOLUTION_GUARD_OK* ]] || return 1
+}
+
 @test "npm owner cleanup requires a confirmed cache root" {
     assert_owner_cleanup_requires_confirmed_root npm clean_dev_npm
 }

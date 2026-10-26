@@ -1640,6 +1640,7 @@ perform_cleanup() {
     # Pre-check TCC permissions to avoid mid-run prompts.
     if [[ -z "$EXTERNAL_VOLUME_TARGET" ]]; then
         check_tcc_permissions
+        start_legacy_analyzer_cache_sweep
     fi
 
     if [[ ${#WHITELIST_PATTERNS[@]} -gt 0 ]]; then

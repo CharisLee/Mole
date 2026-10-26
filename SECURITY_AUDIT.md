@@ -33,6 +33,17 @@ Source repairs: `541690b5` for Analyze and `16f5c5d7` for developer cleanup.
 
 The underlying file operations remain path-based. These changes reduce demonstrated authorization gaps; they do not create an atomic lease against concurrent hostile replacement. No command, flag, setting or new output mode was added. User-visible changes are refusal of the unsafe targets and ignored hidden busy-state actions.
 
+### Residual Closure Follow-up
+
+The follow-up freezes `main` at `32b70a91` and `windows` at `d1ab34a2`, rechecks every limitation below and repairs two further macOS defects in `bc3d642a` (history JSON) and `79e255a8` (owner interruption). The Windows review owns its Store-manifest and lint-gate fixes. This is an incremental closure of the complete review, not a new release or certification.
+
+| Finding | Repair and visible change | Regression evidence |
+| --- | --- | --- |
+| Invalid UTF-8 made history output invalid JSON | `history_json_escape` preserves valid scalar sequences and replaces each malformed byte with U+FFFD in JSON only. Raw logs, text mode and action paths remain unchanged. No new flag or output field. | Both the byte-level helper and the real history router failed on old source. Tests cover every nonzero byte, canonical scalar boundaries, overlong/surrogate/out-of-range/truncated encodings, deterministic mixed-byte inputs, valid multilingual text and unchanged log bytes. |
+| Physical cache-root lookup swallowed interruption | `owner_cache_root_is_safe` preserves the failing subshell status instead of collapsing it to an ordinary refusal. An interrupted lookup now cancels later cleanup; an ordinary lookup failure still skips only that cache. | The real `clean_uv_cache` caller failed on old source. Executable fixture owners and probes cover interrupted, failed and successful `cd`/`pwd` paths without invoking a real cache command. |
+
+Follow-up verification is recorded in [the audit log](docs/weekly-audit.md#2026-10-26-residual-closure). The original verification and its test-isolation correction below remain historical evidence, not a claim that every earlier test was mocked.
+
 ### Verification Receipt
 
 The original isolated source plus this review's fixes passed the complete `TERM=xterm-256color MOLE_TEST_NO_AUTH=1 ./scripts/test.sh`, exit 0 with the runner's `All tests passed!` summary. Final integration on `c8fe24f1` plus the owned patch: passed with exit 0 and the runner's `All tests passed!` summary; the final linked-runtime Go follow-up was then checked with the full Go/race/build/lint gates. Formatting, `check.sh --no-format`, `make build`, full Go tests and Analyze race tests passed. An existing asynchronous-cache test cleanup race surfaced during validation; its test now waits for the completed cache publication instead of tearing down its temporary HOME while the writer is active. The focused race test passed 100 repetitions.
@@ -411,19 +422,23 @@ Key coverage areas include:
 
 ## Known Limitations and Future Work
 
-- Cleanup is destructive. Most cleanup flows do not provide undo.
-- Path and owner rechecks reduce stale-plan and accidental traversal risks, but do not hold an atomic lease from inspection through every filesystem or owner-command action. A hostile process continuously replacing paths, or an application starting after its final idle check, remains outside that guarantee.
-- A multi-file operation can stop after partial completion. Cancellation, timeout and synchronous logs preserve known outcomes where possible, but are not a transaction or crash-recovery mechanism.
-- `mo analyze` delete is safer because it uses Trash, but other cleanup flows are permanent once confirmed.
-- `mo uninstall` now routes more removals through Trash, but Trash availability, permissions, and volume behavior still depend on the local macOS environment.
-- Generic orphan data waits 30 days before cleanup; this is conservative but heuristic.
-- Claude VM orphan cleanup waits 7 days before cleanup; this is also heuristic.
-- Time Machine safety windows are hour-based and intentionally conservative.
-- Localized app names may still be missed in some heuristic paths, though bundle IDs are preferred where available.
-- Users who want immediate removal of app data should use explicit uninstall flows rather than waiting for orphan cleanup.
-- Release artifacts include checksums and attestations, but downstream package-manager trust also depends on external distribution infrastructure.
-- Operation and deletion logs write control bytes as `\n`, `\r`, `\t` or `\xHH` and leave backslashes literal, so a filename holding a backslash followed by `n` reads the same as one holding a newline. A filename cannot create an extra record through those control bytes. The logs remain user-writable and are not tamper-resistant evidence.
-- `mo history --json` escapes strings byte by byte under `LC_ALL=C` (`history_json_escape`) for portable behavior on bash 3.2. It preserves valid UTF-8 input but does not validate or repair malformed log bytes. A fixture containing byte `0xff` is emitted unchanged and cannot be decoded as UTF-8 JSON; valid multibyte text is preserved. This is a malformed-input limitation of the history renderer, not a deletion-path test.
-- Planned follow-up work includes stronger destructive-command threat modeling, more regression coverage for high-risk paths, and continued hardening of release integrity and disclosure workflow.
+The 14 entries from the initial report were individually rechecked. M13 is repaired; the other 13 retain the stated product, operating-system or verification boundary rather than representing an unimplemented patch.
+
+| ID | Disposition | Reason and current boundary |
+| --- | --- | --- |
+| M01 | No code change | Permanent cleanup has no general undo. Changing every cleanup to Trash would change its existing reclaim-space contract. |
+| M02 | No code change | Final path/owner checks reduce replacement risks but do not hold an atomic lease across a filesystem or third-party owner action. An owner can start after its last idle check. |
+| M03 | No code change | Multi-file operations can stop after partial completion. Synchronous logs retain known outcomes, not a transaction or crash-recovery guarantee. Slim likewise retains the original in Trash if final replacement fails; automatically restoring over a concurrently created target would be unsafe. |
+| M04 | No code change | Analyze explicitly uses Trash; other confirmed cleanup remains permanent. These command-specific recovery semantics are intentional. |
+| M05 | No code change | Uninstall Trash operations still depend on macOS permissions, volume behavior and Trash availability; failures preserve remaining targets rather than falling back to permanent deletion. |
+| M06 | No code change | Generic orphan cleanup's 30-day threshold is only one guard. It is limited to caches, logs and saved application state, requires complete installed-app evidence and rechecks bundle ownership and identity. A nonstandard installation invisible to that inventory remains a discovery limit. |
+| M07 | No code change | Claude VM orphan cleanup requires seven days, absent exact bundle ownership, no live/unknown owner and a final ownership recheck. The age alone is not authorization; invisible installations remain a discovery limit. |
+| M08 | No code change | Time Machine windows intentionally use conservative hour-based retention; there is no demonstrated unsafe boundary requiring a finer unit. |
+| M09 | No code change | Bundle IDs and localized metadata are preferred, but incomplete metadata or nonstandard installation locations can still defeat name-based discovery. Broader guessed-name deletion would weaken ownership. |
+| M10 | No code change | Immediate app-data removal belongs to the separately confirmed uninstall flow, not shortening automatic orphan retention. |
+| M11 | No code change | Checksums and available attestations do not eliminate bootstrap or downstream distribution trust. A second hash from the same source would not resolve that boundary. |
+| M12 | No code change | Control bytes cannot forge extra records, but literal backslash escapes can display like escaped control bytes. Logs are user-writable, not tamper-resistant evidence; adding a same-user signature would not establish independent trust. |
+| M13 | Fixed and regression-tested | History JSON now validates UTF-8 and renders malformed bytes as U+FFFD, preserving valid text and stored log bytes. See the follow-up above. |
+| M14 | Ongoing verification | Threat modeling, regression coverage and release/disclosure hardening are continuing review duties, not a specific unresolved defect. Fixtures and source checks do not prove every installed application, signed package or machine. |
 
 For reporting procedures and supported versions, see [SECURITY.md](SECURITY.md).

@@ -18,7 +18,7 @@ owner_cache_root_is_safe() {
         [[ -n "$existing" ]] || existing=/
     done
     [[ -d "$existing" ]] || return 1
-    physical_root=$(cd -P "$existing" 2> /dev/null && pwd -P) || return 1
+    physical_root=$(cd -P "$existing" 2> /dev/null && pwd -P) || return $?
     physical_root="${physical_root%/}$suffix"
     validate_path_for_deletion "$physical_root" > /dev/null 2>&1 || return $?
     is_path_whitelisted "$physical_root" && return 1
