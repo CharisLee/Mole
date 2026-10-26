@@ -3266,3 +3266,66 @@ SH
 @test "cache final sink shared post-size-swap" {
     assert_cache_final_owner_guard post-size-swap shared
 }
+
+@test "legacy analyzer cache sweep removes only flat analyzer files from ~/.cache/mole" {
+    run env HOME="$BATS_TEST_TMPDIR/legacy-home" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+root="$HOME/.cache/mole"
+mkdir -p "$root/analyzer" "$root/tmp"
+for i in 1 2 3; do printf x > "$root/abc00$i.cache"; done
+printf x > "$root/overview_sizes.json"
+printf x > "$root/version_check"
+printf x > "$root/update_message"
+printf x > "$root/pkg_receipt_apps_v1"
+printf x > "$root/analyzer/keep.cache"
+mkdir "$root/dir.cache"
+source "$PROJECT_ROOT/bin/clean.sh"
+sweep_legacy_analyzer_cache_now "$root"
+ls -A "$root" | sort | tr '\n' ' '
+SCRIPT
+    [ "$status" -eq 0 ]
+    [ "$output" = "analyzer dir.cache pkg_receipt_apps_v1 tmp update_message version_check " ]
+}
+
+@test "legacy analyzer cache sweep skips dry runs and a symlinked cache root" {
+    run env HOME="$BATS_TEST_TMPDIR/legacy-skip" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+real="$HOME/elsewhere"
+mkdir -p "$real" "$HOME/.cache"
+printf x > "$real/a.cache"
+ln -s "$real" "$HOME/.cache/mole"
+source "$PROJECT_ROOT/bin/clean.sh"
+DRY_RUN=false
+start_legacy_analyzer_cache_sweep
+sweep_legacy_analyzer_cache_now "$HOME/.cache/mole"
+rm "$HOME/.cache/mole"; mkdir "$HOME/.cache/mole"; printf x > "$HOME/.cache/mole/b.cache"
+DRY_RUN=true
+start_legacy_analyzer_cache_sweep
+sleep 0.5
+ls -A "$real" "$HOME/.cache/mole" | tr '\n' ' '
+SCRIPT
+    [ "$status" -eq 0 ]
+    [[ "$output" == *"a.cache"* ]] || return 1
+    [[ "$output" == *"b.cache"* ]]
+}
+
+@test "clean starts the legacy analyzer cache sweep in the background" {
+    run env HOME="$BATS_TEST_TMPDIR/legacy-bg" PROJECT_ROOT="$PROJECT_ROOT" /bin/bash --noprofile --norc <<'SCRIPT'
+set -euo pipefail
+root="$HOME/.cache/mole"
+mkdir -p "$root"
+for i in $(seq 1 200); do printf x > "$root/f$i.cache"; done
+printf x > "$root/version_check"
+source "$PROJECT_ROOT/bin/clean.sh"
+DRY_RUN=false
+MOLE_DRY_RUN=0
+start_legacy_analyzer_cache_sweep
+for _ in $(seq 1 50); do
+    [[ -z "$(find "$root" -maxdepth 1 -name '*.cache' -print -quit)" ]] && break
+    sleep 0.1
+done
+ls -A "$root" | tr '\n' ' '
+SCRIPT
+    [ "$status" -eq 0 ]
+    [ "$output" = "version_check " ]
+}
