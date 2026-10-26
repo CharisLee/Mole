@@ -598,3 +598,114 @@ SCRIPT
     [ "$status" -eq 0 ] || { echo "$output"; return 1; }
     [[ "$output" == *PASS* ]]
 }
+
+incident_ledger() {
+    printf '## Incidents\n\n| ID | Reported | Symptom | Introduced | Fixed | Layer | Caught by |\n|---|---|---|---|---|---|---|\n%s\n' "$1" > "$BATS_TEST_TMPDIR/incidents.md"
+}
+
+@test "incident audit names each broken cell of a ledger row" {
+    local audit="$PROJECT_ROOT/scripts/audit_incidents.py"
+    local head good row expected
+    head=$(git -C "$PROJECT_ROOT" rev-parse --short=8 HEAD)
+    good="| I-01 | 2026-10-26 | A defect | unknown | $head | unit | \`check.sh --help shows usage information\` |"
+
+    incident_ledger "$good"
+    run python3 "$audit" --ledger "$BATS_TEST_TMPDIR/incidents.md"
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"incidents-audit-ok rows=1"* ]] || { echo "$output"; return 1; }
+
+    local -a cases=(
+        "layer nightly is not one of=${good/| unit |/| nightly |}"
+        "is not a test or gate=${good/usage information/usage informatio}"
+        "no catcher named=${good/\`check.sh --help shows usage information\`/a test}"
+        "Fixed is not a commit=${good/$head/later}"
+        "Introduced is not a commit=${good/unknown/soon}"
+        "Reported is not a date=${good/2026-10-26/Oct 26}"
+        "I-01 repeats=$good"$'\n'"$good"
+        "expected 7 cells=${good/ unit |/}"
+    )
+    local case_entry
+    for case_entry in "${cases[@]}"; do
+        expected="${case_entry%%=*}"
+        row="${case_entry#*=}"
+        incident_ledger "$row"
+        run python3 "$audit" --ledger "$BATS_TEST_TMPDIR/incidents.md"
+        [ "$status" -eq 1 ] || { echo "$expected: $output"; return 1; }
+        [[ "$(printf '%s\n' "$output" | grep -c .)" -eq 1 ]] || { echo "$expected: $output"; return 1; }
+        [[ "$output" == *"$expected"* ]] || { echo "$expected: $output"; return 1; }
+    done
+}
+
+@test "incident audit finds Bats, Go and Python tests and gate scripts as catchers" {
+    local audit="$PROJECT_ROOT/scripts/audit_incidents.py"
+    local head catchers
+    head=$(git -C "$PROJECT_ROOT" rev-parse --short=8 HEAD)
+    catchers="\`check.sh --help shows usage information\`, \`TestDuIgnoresUseSystemDuWhenGNUDuIsFirstInPath\`, \`test_default_stops_after_first_failure\`, \`scripts/audit_timeout_status.py\`"
+
+    incident_ledger "| I-01 | 2026-10-26 | A defect | $head | $head | review | $catchers |"
+    run python3 "$audit" --ledger "$BATS_TEST_TMPDIR/incidents.md"
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+
+    incident_ledger "| I-01 | 2026-10-26 | A defect | unknown | $head | review | \`TestNoSuchCatcher\`, \`scripts/audit_no_such_gate.py\` |"
+    run python3 "$audit" --ledger "$BATS_TEST_TMPDIR/incidents.md"
+    [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"\`TestNoSuchCatcher\` is not a test or gate"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"\`scripts/audit_no_such_gate.py\` is not a test or gate"* ]] || { echo "$output"; return 1; }
+}
+
+@test "incident audit fails a commit that does not resolve" {
+    if [[ "$(git -C "$PROJECT_ROOT" rev-parse --is-shallow-repository)" == "true" ]]; then
+        skip "commits cannot be resolved in a shallow clone"
+    fi
+    incident_ledger "| I-01 | 2026-10-26 | A defect | unknown | 0000000 | unit | \`check.sh --help shows usage information\` |"
+    run python3 "$PROJECT_ROOT/scripts/audit_incidents.py" --ledger "$BATS_TEST_TMPDIR/incidents.md"
+    [ "$status" -eq 1 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"incidents.md:5: Fixed 0000000 does not resolve"* ]] || { echo "$output"; return 1; }
+}
+
+@test "the incident ledger passes its audit" {
+    run python3 "$PROJECT_ROOT/scripts/audit_incidents.py"
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == *"incidents-audit-ok rows="* ]]
+}
+
+@test "risk tiers follow the paths a change touches, highest first" {
+    local tiers="$PROJECT_ROOT/scripts/risk_tier.py"
+
+    run python3 "$tiers" lib/core/file_ops.sh
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == "risk: deletion "*$'\n'"risk: privilege "* ]] || { echo "$output"; return 1; }
+
+    run python3 "$tiers" .github/workflows/release.yml install.sh lib/manage/update.sh
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == "risk: release "*$'\n'"risk: ci "*$'\n'"risk: install-update (install.sh and 1 more) "* ]] || { echo "$output"; return 1; }
+
+    run python3 "$tiers" docs/incidents.md .claude/rules/clean.md cmd/status/view.go tests/clean_core.bats
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [ -z "$output" ]
+}
+
+@test "every risk tier pattern matches a tracked file" {
+    run python3 "$PROJECT_ROOT/scripts/risk_tier.py" --self-check
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+
+    # The self-check must be able to fail: a pattern left behind by a rename.
+    run env PYTHONDONTWRITEBYTECODE=1 python3 - "$PROJECT_ROOT/scripts" <<'PYTHON'
+import sys
+sys.path.insert(0, sys.argv[1])
+import risk_tier
+risk_tier.TIERS.append(("deletion", "gates", ["lib/core/renamed_away.sh"]))
+print(risk_tier.dead_patterns())
+PYTHON
+    [ "$status" -eq 0 ] || { echo "$output"; return 1; }
+    [[ "$output" == "['deletion: lib/core/renamed_away.sh']" ]] || { echo "$output"; return 1; }
+}
+
+@test "CI and local checks run the incident audit and the risk tiers" {
+    run grep -F 'audit_incidents.py' "$PROJECT_ROOT/scripts/check.sh"
+    [ "$status" -eq 0 ]
+    run grep -F 'risk_tier.py' "$PROJECT_ROOT/scripts/check.sh"
+    [ "$status" -eq 0 ]
+    run grep -F 'python3 scripts/audit_incidents.py' "$PROJECT_ROOT/.github/workflows/test.yml"
+    [ "$status" -eq 0 ]
+}
