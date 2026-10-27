@@ -23,12 +23,17 @@ _mole_browser_clones_idle() {
                 *"/Helium.app/"* | *"/Helium.app.bundle/"* | \
                 *"/Brave Browser"*".app/"* | *"/Brave Browser"*".app.bundle/"* | \
                 *"/Brave Origin"*".app/"* | *"/Brave Origin"*".app.bundle/"* | \
+                *"/Microsoft Edge"*".app/"* | *"/Microsoft Edge"*".app.bundle/"* | \
+                *"/ego lite.app/"* | *"/ego lite.app.bundle/"* | \
                 *"/com.google.Chrome"*".code_sign_clone/"* | *"/org.chromium.Chromium.code_sign_clone/"* | \
                 *"/net.imput.helium.code_sign_clone/"* | *"/com.brave.Browser"*".code_sign_clone/"* | \
+                *"/com.microsoft.edgemac.code_sign_clone/"* | *"/com.citrolabs.ego.lite.code_sign_clone/"* | \
                 "Google Chrome"* | "Chromium" | *"/Google Chrome" | *"/Chromium" | \
                 "Helium" | "Helium Helper"* | *"/Helium" | \
                 "Brave Browser"* | "Brave Origin"* | *"/Brave Browser" | *"/Brave Origin" | \
-                *"/Contents/MacOS/Brave Browser"* | *"/Contents/MacOS/Brave Origin"*) return 1 ;;
+                *"/Contents/MacOS/Brave Browser"* | *"/Contents/MacOS/Brave Origin"* | \
+                "Microsoft Edge"* | *"/Microsoft Edge" | *"/Contents/MacOS/Microsoft Edge"* | \
+                "ego lite" | "ego Helper"* | *"/ego lite" | *"/Contents/MacOS/ego lite"*) return 1 ;;
         esac
     done <<< "$output"
 }
@@ -56,6 +61,11 @@ _mole_browser_clone_snapshot() {
         com.brave.Browser.origin.code_sign_clone) app="Brave Origin" ;;
         com.brave.Browser.origin.beta.code_sign_clone) app="Brave Origin Beta" ;;
         com.brave.Browser.origin.nightly.code_sign_clone) app="Brave Origin Nightly" ;;
+        # Edge and ego lite (2026-10-27): a user's Edge root held 2.2 GB of clones
+        # and ego lite left 1.3 GB behind a newer version. Mole Mac parity:
+        # BrowserClonePolicy.browsers.
+        com.microsoft.edgemac.code_sign_clone) app="Microsoft Edge" ;;
+        com.citrolabs.ego.lite.code_sign_clone) app="ego lite" ;;
         *) return 1 ;;
     esac
     [[ "${rest#*/}" =~ ^code_sign_clone\.[A-Za-z0-9]{6}$ ]] || return 1
@@ -113,7 +123,8 @@ clean_browser_code_sign_clones() {
     local _MOLE_BROWSER_CLONE_REVIEW="" _MOLE_SAFE_REMOVE_FINAL_GUARD=_mole_browser_clone_final_guard
     for id in com.google.Chrome com.google.Chrome.beta com.google.Chrome.dev com.google.Chrome.canary org.chromium.Chromium net.imput.helium \
         com.brave.Browser com.brave.Browser.beta com.brave.Browser.nightly \
-        com.brave.Browser.origin com.brave.Browser.origin.beta com.brave.Browser.origin.nightly; do
+        com.brave.Browser.origin com.brave.Browser.origin.beta com.brave.Browser.origin.nightly \
+        com.microsoft.edgemac com.citrolabs.ego.lite; do
         for path in "$root/$id.code_sign_clone"/code_sign_clone.*; do
             [[ -d "$path" && ! -L "$path" ]] || continue
             system_cleanup_budget_reached "$deadline" && return 0
