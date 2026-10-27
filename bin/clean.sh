@@ -1823,13 +1823,12 @@ perform_cleanup() {
             start_section "App leftovers"
             _run_cleanup_step clean_orphaned_app_data || return $?
             _run_cleanup_step clean_orphaned_system_services || return $?
-            # No stale-LaunchServices step here on purpose. `lsregister -u`
-            # cannot remove a record whose app is already gone: on macOS 15 and
-            # later it fails with -10814 for every such path, which is exactly
-            # the set this would have targeted, so the step could only ever
-            # report failures. `mo optimize` no longer rebuilds LaunchServices
-            # either: the rebuild made a running VPN extension read as
-            # reinstalled, so no command offers this repair.
+            # No stale-LaunchServices step here. An earlier note said
+            # `lsregister -u` fails with -10814 for an app that is already
+            # gone; on macOS 27.0.1 (2026-10-27) it exits 0 and the record
+            # leaves the dump, so only the product decision keeps this out.
+            # `mo optimize` no longer rebuilds LaunchServices either: the
+            # rebuild made a running VPN extension read as reinstalled.
             _run_cleanup_step clean_orphaned_container_stubs || return $?
             _run_cleanup_step show_user_launch_agent_hint_notice || return $?
             end_section

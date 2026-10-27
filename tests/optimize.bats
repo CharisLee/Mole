@@ -258,6 +258,36 @@ EOF
 	[[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
 }
 
+@test "DNS refresh reports a macOS-refused service signal as skipped without a name fallback" {
+	run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MOLE_ASSUME_VPN_ACTIVE=0 MOLE_DRY_RUN=0 /bin/bash --noprofile --norc <<'EOF'
+set -euo pipefail
+source "$PROJECT_ROOT/lib/core/common.sh"
+source "$PROJECT_ROOT/lib/optimize/tasks.sh"
+optimize_sudo_available() { return 0; }
+function /usr/bin/plutil { echo com.apple.mDNSResponder.reloaded; }
+trace="$HOME/dns-signal-eperm.trace"
+: > "$trace"
+sudo() {
+    printf '%s\n' "$*" >> "$trace"
+    [[ "$1" == dscacheutil ]] && return 0
+    echo "Not privileged to signal service." >&2
+    return 1
+}
+result=0
+flush_dns_cache || result=$?
+[[ "$result" == 4 ]] || exit 1
+expected=$(printf 'dscacheutil -flushcache\n/bin/launchctl kill SIGHUP system/com.apple.mDNSResponder.reloaded')
+[[ "$(cat "$trace")" == "$expected" ]] || exit 2
+flush_dns_cache() { return 4; }
+execute_optimization network_optimization
+[[ "$(optimize_outcome_count skipped)" == 1 ]] || exit 3
+[[ "$(optimize_outcome_count failed)" == 0 ]] || exit 4
+EOF
+	[[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+	[[ "$output" == *"macOS does not allow signaling mDNSResponder"* ]] || return 1
+	[[ "$output" != *"Failed to refresh DNS cache"* ]]
+}
+
 @test "DNS flush fails closed when the VPN state cannot be determined" {
 	run env HOME="$HOME" PROJECT_ROOT="$PROJECT_ROOT" MOLE_OPTIMIZE_SUDO_AVAILABLE=true MOLE_DRY_RUN=0 /bin/bash --noprofile --norc <<'EOF'
 set -euo pipefail
