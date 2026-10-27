@@ -155,8 +155,9 @@ has_active_vpn_interface() {
 }
 
 # Return 0 when the DNS cache was flushed (or would be in dry-run), 1 when the
-# flush failed or admin access is missing, 2 when an active VPN skipped it, and
-# 3 when the VPN state is unknown. SIGHUP makes mDNSResponder drop its cache,
+# flush failed or admin access is missing, 2 when an active VPN skipped it, 3
+# when the VPN state is unknown, and 4 when the directory cache was flushed but
+# macOS refused the mDNSResponder signal. SIGHUP makes mDNSResponder drop its cache,
 # and VPN clients that watch DNS configuration (WireGuard and similar) treat
 # that as a network change and reconnect. An unknown state also skips, like
 # opt_network_stack_optimize, because the probe could not rule a VPN out.
@@ -187,10 +188,14 @@ flush_dns_cache() {
         *) return 1 ;;
     esac
 
-    if sudo dscacheutil -flushcache 2> /dev/null &&
-        sudo /bin/launchctl kill SIGHUP "system/$service_label" 2> /dev/null; then
-        return 0
-    fi
+    sudo dscacheutil -flushcache 2> /dev/null || return 1
+    local signal_error="" signal_status=0
+    { signal_error=$(sudo /bin/launchctl kill SIGHUP "system/$service_label" 2>&1 >&3); } 3>&1 || signal_status=$?
+    [[ $signal_status -eq 0 ]] && return 0
+    # macOS 27 refuses this signal to every caller, root included (#1867).
+    # That is the OS withholding the action, not a failed refresh, and the
+    # name-based killall it would take to get past it is still refused above.
+    [[ "$signal_error" == *"Not privileged to signal service"* ]] && return 4
     return 1
 }
 
@@ -438,6 +443,10 @@ opt_network_optimization() {
         3)
             echo -e "  ${YELLOW}${ICON_WARNING}${NC} Failed to inspect active VPN state"
             optimize_task_result "$MOLE_OPTIMIZE_OUTCOME_FAILED"
+            ;;
+        4)
+            opt_msg "DNS cache refresh skipped, macOS does not allow signaling mDNSResponder"
+            optimize_task_result "$MOLE_OPTIMIZE_OUTCOME_SKIPPED"
             ;;
         *)
             echo -e "  ${YELLOW}${ICON_WARNING}${NC} Failed to refresh DNS cache"
